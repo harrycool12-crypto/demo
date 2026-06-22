@@ -10,9 +10,16 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.get("/active")
-async def active_members(request: Request):
-    members = db.report_active_members()
-    return templates.TemplateResponse("reports/active.html", {"request": request, "members": members})
+async def active_members(request: Request, status: str = "Active"):
+    if status == "All":
+        members = db.report_all_members()
+    elif status == "Inactive":
+        members = db.report_inactive_members_full()
+    else:
+        members = db.report_active_members()
+    return templates.TemplateResponse("reports/active.html", {
+        "request": request, "members": members, "status": status
+    })
 
 
 @router.get("/inactive")
@@ -61,15 +68,24 @@ def _excel_response(wb, filename: str):
 
 
 @router.get("/export/active")
-async def export_active():
+async def export_active(status: str = "Active"):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
-    members = db.report_active_members()
+    if status == "All":
+        members = db.report_all_members()
+    elif status == "Inactive":
+        members = db.report_inactive_members_full()
+    else:
+        members = db.report_active_members()
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Active Members"
-    headers = ["Member ID", "Name", "Mobile", "Father's Name", "Address", "Join Date", "Plan", "Expiry Date"]
-    col_widths = [12, 25, 15, 25, 35, 14, 14, 14]
+    ws.title = f"{status} Members"
+    show_status = (status in ("All", "Inactive"))
+    headers = ["Receipt No", "Member ID", "Name", "Mobile", "Father's Name", "Address", "Join Date", "Plan", "Expiry Date"]
+    col_widths = [12, 12, 25, 15, 25, 35, 14, 14, 14]
+    if show_status:
+        headers.append("Status")
+        col_widths.append(12)
     for col, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.font = Font(bold=True, color="FFFFFF")
@@ -78,12 +94,16 @@ async def export_active():
         ws.column_dimensions[cell.column_letter].width = w
     ws.row_dimensions[1].height = 20
     for m in members:
-        ws.append([
-            m["member_id"], m["name"], m["mobile"],
+        rcpt = f"B{m['book_no']}-{m['receipt_no']:03d}" if m.get("receipt_no") else ""
+        row = [
+            rcpt, m["member_id"], m["name"], m["mobile"],
             m.get("father_name", "") or "", m.get("address", "") or "",
             m["join_date"], m.get("plan", "") or "", m.get("expiry_date", "") or "",
-        ])
-    return _excel_response(wb, "active_members.xlsx")
+        ]
+        if show_status:
+            row.append(m.get("status", ""))
+        ws.append(row)
+    return _excel_response(wb, f"{status.lower()}_members.xlsx")
 
 
 @router.get("/export/inactive")
@@ -128,6 +148,50 @@ async def export_expiry(days: int = 30):
     for m in members:
         ws.append([m["member_id"], m["name"], m["mobile"], m.get("plan", ""), m["expiry_date"], m["days_remaining"]])
     return _excel_response(wb, "expiry_report.xlsx")
+
+
+@router.get("/export/payment-history")
+async def export_payment_history(
+    member_id: int = None,
+    month: str = "",
+    start_date: str = "",
+    end_date: str = "",
+):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    payments = db.get_payment_history(
+        member_id, month or None, start_date or None, end_date or None
+    )
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Payment History"
+    headers = ["Receipt No", "Member Name", "Plan", "Start Date", "Expiry Date",
+               "Amount (₹)", "Payment Date", "Mode"]
+    col_widths = [12, 25, 14, 14, 14, 14, 14, 14]
+    for col, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1a6b3a")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[1].height = 20
+    total = 0
+    for p in payments:
+        rcpt = f"B{p['book_no']}-{p['receipt_no']:03d}" if p.get("receipt_no") else ""
+        ws.append([
+            rcpt, p["name"], p.get("plan", "") or "",
+            p.get("membership_start", "") or "",
+            p.get("membership_expiry", "") or "",
+            p["amount"], p["payment_date"],
+            p.get("payment_mode", "") or "",
+        ])
+        total += p["amount"]
+    # Total row
+    from openpyxl.styles import Font as F
+    total_row = ws.max_row + 1
+    ws.cell(row=total_row, column=5, value="TOTAL").font = F(bold=True)
+    ws.cell(row=total_row, column=6, value=total).font = F(bold=True)
+    return _excel_response(wb, "payment_history.xlsx")
 
 
 @router.get("/export/collection")

@@ -6,25 +6,84 @@
   <div>
     <h4><i class="bi bi-receipt me-2 text-success"></i>Payment History</h4>
     <nav aria-label="breadcrumb">
-      <ol class="breadcrumb">
-        <li class="breadcrumb-item active">Payments</li>
-      </ol>
+      <ol class="breadcrumb"><li class="breadcrumb-item active">Payments &rsaquo; History</li></ol>
     </nav>
   </div>
+  <a href="/reports/export/payment-history?{% if member %}member_id={{ member.member_id }}&{% endif %}month={{ selected_month }}&start_date={{ start_date }}&end_date={{ end_date }}"
+     class="btn btn-outline-success btn-sm">
+    <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+  </a>
 </div>
 
 {% if member %}
-<div class="alert alert-info d-flex align-items-center gap-2 mb-3">
-  <i class="bi bi-filter"></i>
+<div class="alert alert-info d-flex align-items-center gap-2 mb-3 py-2">
+  <i class="bi bi-person-fill"></i>
   Showing payments for <strong>{{ member.name }}</strong>
-  <a href="/payments/history" class="ms-auto btn btn-sm btn-outline-secondary">Show All</a>
+  <a href="/payments/history" class="ms-auto btn btn-sm btn-outline-secondary">Show All Members</a>
 </div>
 {% endif %}
 
-<div class="card">
-  <div class="card-header">
-    <span>Payments <span class="badge bg-secondary ms-1">{{ payments|length }}</span></span>
+<!-- Filter bar -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" action="/payments/history" class="row g-2 align-items-end">
+      {% if member %}<input type="hidden" name="member_id" value="{{ member.member_id }}">{% endif %}
+
+      <!-- Month dropdown -->
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Month</label>
+        <select name="month" class="form-select form-select-sm" style="width:auto"
+                onchange="this.form.submit()">
+          <option value="">All Months</option>
+          {% for m in months %}
+          <option value="{{ m.value }}" {% if selected_month == m.value %}selected{% endif %}>
+            {{ m.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Divider -->
+      <div class="col-auto d-flex align-items-center pb-1 text-muted small">or</div>
+
+      <!-- Start Date -->
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">From</label>
+        <input type="date" name="start_date" class="form-control form-control-sm"
+               value="{{ start_date }}" style="width:145px">
+      </div>
+
+      <!-- End Date -->
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">To</label>
+        <input type="date" name="end_date" class="form-control form-control-sm"
+               value="{{ end_date }}" style="width:145px">
+      </div>
+
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-search me-1"></i>Search
+        </button>
+      </div>
+
+      {% if selected_month or start_date or end_date %}
+      <div class="col-auto">
+        <a href="/payments/history{% if member %}?member_id={{ member.member_id }}{% endif %}"
+           class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-x me-1"></i>Clear
+        </a>
+      </div>
+      {% endif %}
+
+      <div class="col text-end text-muted small pt-3">
+        <strong>{{ payments|length }}</strong> record(s) &nbsp;|&nbsp;
+        Total: <strong class="text-success">₹{{ "{:,.0f}".format(total) }}</strong>
+      </div>
+    </form>
   </div>
+</div>
+
+<div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
@@ -33,6 +92,8 @@
             <th>Receipt No.</th>
             <th>Member Name</th>
             <th>Plan</th>
+            <th>Start Date</th>
+            <th>Expiry Date</th>
             <th>Amount</th>
             <th>Payment Date</th>
             <th>Mode</th>
@@ -42,7 +103,11 @@
           {% for p in payments %}
           <tr>
             <td class="fw-semibold text-primary" style="font-size:.82rem">
-              RCPT-{{ p.payment_date[:4] }}-{{ "%03d"|format(p.payment_id) }}
+              {% if p.receipt_no %}
+                B{{ p.book_no }}-{{ "%03d"|format(p.receipt_no) }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
             </td>
             <td>
               <a href="/members/{{ p.member_id }}/view" class="text-decoration-none fw-semibold">
@@ -50,18 +115,37 @@
               </a>
             </td>
             <td><span class="badge bg-secondary">{{ p.plan or '—' }}</span></td>
+            <td style="font-size:.85rem">{{ p.membership_start or '—' }}</td>
+            <td style="font-size:.85rem">{{ p.membership_expiry or '—' }}</td>
             <td class="fw-bold text-success">₹{{ "{:,.0f}".format(p.amount) }}</td>
             <td style="font-size:.85rem">{{ p.payment_date }}</td>
             <td>
-              <span class="badge {% if p.payment_mode=='Cash' %}bg-success{% elif p.payment_mode=='UPI' %}bg-info text-dark{% else %}bg-primary{% endif %}">
+              <span class="badge
+                {% if p.payment_mode == 'Cash' %}bg-success
+                {% elif p.payment_mode == 'UPI' %}bg-info text-dark
+                {% else %}bg-primary{% endif %}">
                 {{ p.payment_mode }}
               </span>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center text-muted py-4">No payments recorded</td></tr>
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">
+              <i class="bi bi-inbox me-2"></i>No payments found
+              {% if selected_month %}for {{ selected_month }}{% endif %}
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
+        {% if payments %}
+        <tfoot class="table-light">
+          <tr>
+            <td colspan="5" class="text-end fw-semibold">Total</td>
+            <td class="fw-bold text-success">₹{{ "{:,.0f}".format(total) }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
       </table>
     </div>
   </div>

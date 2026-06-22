@@ -94,6 +94,29 @@
               {% endfor %}
             </select>
           </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Receipt No. <span class="required-star">*</span></label>
+            <div class="row g-2">
+              <div class="col-5">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">Book</span>
+                  <input type="number" name="book_no" id="bookNo" class="form-control" min="1"
+                         value="{{ next_book }}" required placeholder="1">
+                </div>
+              </div>
+              <div class="col-7">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">Receipt</span>
+                  <input type="number" name="receipt_no" id="receiptNo" class="form-control" min="1"
+                         value="{{ next_receipt }}" required placeholder="1">
+                </div>
+              </div>
+            </div>
+            <div class="text-muted small mt-1">
+              Receipt will be saved as:
+              <strong id="rcptPreview" class="text-success">B{{ next_book }}-{{ "%03d"|format(next_receipt) }}</strong>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -148,5 +171,14 @@ function calcExpiry() {
 document.getElementById('planSelect').addEventListener('change', calcExpiry);
 document.getElementById('startDate').addEventListener('change', calcExpiry);
 calcExpiry();
+
+function updateRcptPreview() {
+  const b = document.getElementById('bookNo').value || '1';
+  const r = document.getElementById('receiptNo').value || '';
+  const rPad = r ? String(r).padStart(3, '0') : '???';
+  document.getElementById('rcptPreview').textContent = 'B' + b + '-' + rPad;
+}
+document.getElementById('bookNo').addEventListener('input', updateRcptPreview);
+document.getElementById('receiptNo').addEventListener('input', updateRcptPreview);
 </script>
 {% endblock %}

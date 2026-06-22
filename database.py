@@ -26,18 +26,77 @@ def get_db():
         conn.close()
 
 
+def _migrate_name_mobile_unique(conn):
+    """Migrate member_master to have UNIQUE(name, mobile) constraint.
+    Handles three cases: old table with UNIQUE(mobile), plain table, already correct.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='member_master'"
+    ).fetchone()
+    if not row:
+        return  # table doesn't exist yet — init_db will create it correctly
+
+    sql = row[0].upper()
+    already_correct = (
+        "UNIQUE" in sql
+        and "NAME" in sql
+        and "MOBILE" in sql
+        # make sure it's a composite key, not just mobile alone
+        and "UNIQUE(NAME, MOBILE)" in sql.replace(" ", "").replace('"', "").replace("'", "")
+    )
+    if already_correct:
+        return  # nothing to do
+
+    # Rebuild the table with the correct constraint
+    conn.executescript("""
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE member_master_new (
+            member_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            mobile      TEXT NOT NULL,
+            father_name TEXT DEFAULT '',
+            address     TEXT DEFAULT '',
+            join_date   DATE NOT NULL,
+            status      TEXT DEFAULT 'Active',
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (name, mobile)
+        );
+        INSERT OR IGNORE INTO member_master_new SELECT * FROM member_master;
+        DROP TABLE member_master;
+        ALTER TABLE member_master_new RENAME TO member_master;
+        PRAGMA foreign_keys = ON;
+    """)
+
+
+def _migrate_add_receipt_fields(conn):
+    """Add book_no and receipt_no columns to payment_history if not present."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='payment_history'"
+    ).fetchone()
+    if not exists:
+        return  # table doesn't exist yet; init_db CREATE TABLE will add columns
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(payment_history)").fetchall()]
+    if "book_no" not in cols:
+        conn.execute("ALTER TABLE payment_history ADD COLUMN book_no INTEGER DEFAULT 1")
+    if "receipt_no" not in cols:
+        conn.execute("ALTER TABLE payment_history ADD COLUMN receipt_no INTEGER")
+
+
 def init_db():
     with get_db() as conn:
+        _migrate_name_mobile_unique(conn)
+        _migrate_add_receipt_fields(conn)
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS member_master (
                 member_id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT NOT NULL,
-                mobile      TEXT UNIQUE NOT NULL,
+                mobile      TEXT NOT NULL,
                 father_name TEXT DEFAULT '',
                 address     TEXT DEFAULT '',
                 join_date   DATE NOT NULL,
                 status      TEXT DEFAULT 'Active',
-                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (name, mobile)
             );
 
             CREATE TABLE IF NOT EXISTS membership (
@@ -60,6 +119,8 @@ def init_db():
                 payment_date  DATE NOT NULL,
                 payment_mode  TEXT DEFAULT 'Cash',
                 plan          TEXT,
+                book_no       INTEGER DEFAULT 1,
+                receipt_no    INTEGER,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (member_id)     REFERENCES member_master(member_id),
                 FOREIGN KEY (membership_id) REFERENCES membership(membership_id)
@@ -135,7 +196,8 @@ def get_dashboard_stats():
         """, (today, today, week_later)).fetchall()
 
         recent_payments = conn.execute("""
-            SELECT ph.payment_id, m.name, ph.amount, ph.payment_date, ph.plan, ph.payment_mode
+            SELECT ph.payment_id, m.name, ph.amount, ph.payment_date, ph.plan,
+                   ph.payment_mode, ph.book_no, ph.receipt_no
             FROM payment_history ph
             JOIN member_master m ON m.member_id = ph.member_id
             ORDER BY ph.created_at DESC LIMIT 10
@@ -198,6 +260,29 @@ def get_member(member_id: int):
         return m
 
 
+def get_next_receipt() -> dict:
+    """Return suggested next book_no and receipt_no based on last entry."""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT book_no, receipt_no FROM payment_history
+            WHERE receipt_no IS NOT NULL
+            ORDER BY book_no DESC, receipt_no DESC LIMIT 1
+        """).fetchone()
+        if row:
+            return {"book_no": row["book_no"], "receipt_no": row["receipt_no"] + 1}
+        return {"book_no": 1, "receipt_no": 1}
+
+
+def member_exists(name: str, mobile: str) -> bool:
+    """Return True if a member with the same name AND mobile already exists."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM member_master WHERE LOWER(name)=LOWER(?) AND mobile=? LIMIT 1",
+            (name.strip(), mobile.strip())
+        ).fetchone()
+        return row is not None
+
+
 def add_member(data: dict) -> int:
     with get_db() as conn:
         cur = conn.execute("""
@@ -214,10 +299,12 @@ def add_member(data: dict) -> int:
               data["amount"], data.get("payment_mode", "Cash"))).lastrowid
 
         conn.execute("""
-            INSERT INTO payment_history (member_id, membership_id, amount, payment_date, payment_mode, plan)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO payment_history
+              (member_id, membership_id, amount, payment_date, payment_mode, plan, book_no, receipt_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (member_id, mid, data["amount"], data["start_date"],
-              data.get("payment_mode", "Cash"), data["plan"]))
+              data.get("payment_mode", "Cash"), data["plan"],
+              data.get("book_no") or 1, data.get("receipt_no") or None))
 
         return member_id
 
@@ -259,30 +346,53 @@ def renew_membership(member_id: int, data: dict):
               data["amount"], data.get("payment_mode", "Cash"))).lastrowid
 
         conn.execute("""
-            INSERT INTO payment_history (member_id, membership_id, amount, payment_date, payment_mode, plan)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO payment_history
+              (member_id, membership_id, amount, payment_date, payment_mode, plan, book_no, receipt_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (member_id, mid, data["amount"], start.isoformat(),
-              data.get("payment_mode", "Cash"), data["plan"]))
+              data.get("payment_mode", "Cash"), data["plan"],
+              data.get("book_no") or 1, data.get("receipt_no") or None))
 
         conn.execute("UPDATE member_master SET status='Active' WHERE member_id=?", (member_id,))
         return expiry.isoformat()
 
 
-def get_payment_history(member_id: int = None, limit: int = 200):
+def get_payment_history(member_id: int = None, month: str = None,
+                        start_date: str = None, end_date: str = None,
+                        limit: int = 500):
+    """Filters: month='YYYY-MM', or start_date/end_date='YYYY-MM-DD', or member_id."""
     with get_db() as conn:
+        where  = []
+        params = []
+
         if member_id:
-            rows = conn.execute("""
-                SELECT ph.*, m.name FROM payment_history ph
-                JOIN member_master m ON m.member_id = ph.member_id
-                WHERE ph.member_id=?
-                ORDER BY ph.created_at DESC LIMIT ?
-            """, (member_id, limit)).fetchall()
+            where.append("ph.member_id = ?")
+            params.append(member_id)
+
+        if month:
+            where.append("strftime('%Y-%m', ph.payment_date) = ?")
+            params.append(month)
         else:
-            rows = conn.execute("""
-                SELECT ph.*, m.name FROM payment_history ph
-                JOIN member_master m ON m.member_id = ph.member_id
-                ORDER BY ph.created_at DESC LIMIT ?
-            """, (limit,)).fetchall()
+            if start_date:
+                where.append("ph.payment_date >= ?")
+                params.append(start_date)
+            if end_date:
+                where.append("ph.payment_date <= ?")
+                params.append(end_date)
+
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+        params.append(limit)
+
+        rows = conn.execute(f"""
+            SELECT ph.*, m.name,
+                   ms.start_date AS membership_start,
+                   ms.expiry_date AS membership_expiry
+            FROM payment_history ph
+            JOIN member_master m ON m.member_id = ph.member_id
+            LEFT JOIN membership ms ON ms.membership_id = ph.membership_id
+            {where_sql}
+            ORDER BY ph.payment_date DESC, ph.created_at DESC LIMIT ?
+        """, params).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -292,14 +402,67 @@ def report_active_members():
     with get_db() as conn:
         rows = conn.execute("""
             SELECT m.member_id, m.name, m.mobile, m.father_name, m.address,
-                   m.join_date, ms.plan, ms.expiry_date
+                   m.join_date, ms.plan, ms.expiry_date,
+                   ph.book_no, ph.receipt_no
             FROM member_master m
             LEFT JOIN membership ms ON ms.member_id = m.member_id
               AND ms.membership_id = (
                     SELECT membership_id FROM membership
                     WHERE member_id = m.member_id ORDER BY expiry_date DESC LIMIT 1
               )
+            LEFT JOIN payment_history ph ON ph.member_id = m.member_id
+              AND ph.payment_id = (
+                    SELECT payment_id FROM payment_history
+                    WHERE member_id = m.member_id ORDER BY payment_id DESC LIMIT 1
+              )
             WHERE m.status='Active'
+            ORDER BY m.name
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
+def report_all_members():
+    """All members (Active + Inactive) with latest receipt."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT m.member_id, m.name, m.mobile, m.father_name, m.address,
+                   m.join_date, m.status, ms.plan, ms.expiry_date,
+                   ph.book_no, ph.receipt_no
+            FROM member_master m
+            LEFT JOIN membership ms ON ms.member_id = m.member_id
+              AND ms.membership_id = (
+                    SELECT membership_id FROM membership
+                    WHERE member_id = m.member_id ORDER BY expiry_date DESC LIMIT 1
+              )
+            LEFT JOIN payment_history ph ON ph.member_id = m.member_id
+              AND ph.payment_id = (
+                    SELECT payment_id FROM payment_history
+                    WHERE member_id = m.member_id ORDER BY payment_id DESC LIMIT 1
+              )
+            ORDER BY m.name
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
+def report_inactive_members_full():
+    """Inactive members with latest receipt."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT m.member_id, m.name, m.mobile, m.father_name, m.address,
+                   m.join_date, m.status, ms.plan, ms.expiry_date,
+                   ph.book_no, ph.receipt_no
+            FROM member_master m
+            LEFT JOIN membership ms ON ms.member_id = m.member_id
+              AND ms.membership_id = (
+                    SELECT membership_id FROM membership
+                    WHERE member_id = m.member_id ORDER BY expiry_date DESC LIMIT 1
+              )
+            LEFT JOIN payment_history ph ON ph.member_id = m.member_id
+              AND ph.payment_id = (
+                    SELECT payment_id FROM payment_history
+                    WHERE member_id = m.member_id ORDER BY payment_id DESC LIMIT 1
+              )
+            WHERE m.status = 'Inactive'
             ORDER BY m.name
         """).fetchall()
         return [dict(r) for r in rows]

@@ -1,26 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Active Members{% endblock %}
+{% block title %}Member Report{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
-    <h4><i class="bi bi-person-check me-2 text-success"></i>Active Members</h4>
-    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Reports &rsaquo; Active Members</li></ol></nav>
+    <h4><i class="bi bi-person-check me-2 text-success"></i>Member Report</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Reports &rsaquo; Members</li></ol></nav>
   </div>
-  <a href="/reports/export/active" class="btn btn-outline-success btn-sm">
+  <a href="/reports/export/active?status={{ status }}" class="btn btn-outline-success btn-sm">
     <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
   </a>
 </div>
 
-<div class="card">
-  <div class="card-header">
-    Active Members <span class="badge bg-success ms-1">{{ members|length }}</span>
+<!-- Filter bar -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+    <span class="fw-semibold small me-1">Show:</span>
+    {% for s in ['Active', 'Inactive', 'All'] %}
+    <a href="/reports/active?status={{ s }}"
+       class="btn btn-sm {% if status == s %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      {% if s == 'Active' %}<i class="bi bi-person-check me-1"></i>
+      {% elif s == 'Inactive' %}<i class="bi bi-person-x me-1"></i>
+      {% else %}<i class="bi bi-people me-1"></i>{% endif %}
+      {{ s }}
+    </a>
+    {% endfor %}
+    <span class="ms-auto badge bg-secondary">{{ members|length }} members</span>
   </div>
+</div>
+
+<div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
           <tr>
             <th>ID</th>
+            <th>Receipt No</th>
             <th>Name</th>
             <th>Mobile</th>
             <th>Father's Name</th>
@@ -28,24 +43,39 @@
             <th>Join Date</th>
             <th>Plan</th>
             <th>Expiry Date</th>
+            {% if status == 'All' %}<th>Status</th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for m in members %}
           <tr>
             <td class="text-muted small">#{{ m.member_id }}</td>
+            <td class="fw-semibold text-primary" style="font-size:.82rem">
+              {% if m.receipt_no %}
+                B{{ m.book_no }}-{{ "%03d"|format(m.receipt_no) }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
             <td>
               <a href="/members/{{ m.member_id }}/view" class="fw-semibold text-decoration-none">{{ m.name }}</a>
             </td>
             <td>{{ m.mobile }}</td>
             <td>{{ m.father_name or '—' }}</td>
-            <td style="max-width:180px;white-space:normal;font-size:.8rem">{{ m.address or '—' }}</td>
+            <td style="max-width:160px;white-space:normal;font-size:.8rem">{{ m.address or '—' }}</td>
             <td style="font-size:.85rem">{{ m.join_date }}</td>
             <td><span class="badge bg-secondary">{{ m.plan or '—' }}</span></td>
             <td style="font-size:.85rem">{{ m.expiry_date or '—' }}</td>
+            {% if status == 'All' %}
+            <td>
+              <span class="badge {% if m.status == 'Active' %}bg-success{% else %}bg-danger{% endif %}">
+                {{ m.status }}
+              </span>
+            </td>
+            {% endif %}
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No active members</td></tr>
+          <tr><td colspan="10" class="text-center text-muted py-4">No members found</td></tr>
           {% endfor %}
         </tbody>
       </table>

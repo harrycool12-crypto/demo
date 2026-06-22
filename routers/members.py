@@ -33,8 +33,12 @@ async def member_list(request: Request, q: str = "", status: str = ""):
 
 @router.get("/add")
 async def add_member_form(request: Request):
-    today = date.today().isoformat()
-    return templates.TemplateResponse("members/add.html", {"request": request, "today": today})
+    today     = date.today().isoformat()
+    next_rcpt = db.get_next_receipt()
+    return templates.TemplateResponse("members/add.html", {
+        "request": request, "today": today,
+        "next_book": next_rcpt["book_no"], "next_receipt": next_rcpt["receipt_no"],
+    })
 
 
 @router.post("/add")
@@ -49,6 +53,8 @@ async def add_member(
     amount: float = Form(...),
     start_date: str = Form(...),
     payment_mode: str = Form("Cash"),
+    book_no: int = Form(1),
+    receipt_no: int = Form(None),
 ):
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     months = PLAN_MONTHS.get(plan, 1)
@@ -64,19 +70,35 @@ async def add_member(
                      "amount": amount, "start_date": start_date, "payment_mode": payment_mode}
         })
 
+    mobile_clean = re.sub(r"\D", "", mobile)
+    if db.member_exists(name, mobile_clean):
+        today     = date.today().isoformat()
+        next_rcpt = db.get_next_receipt()
+        return templates.TemplateResponse("members/add.html", {
+            "request": request, "today": today,
+            "error": f"A member named '{name}' with mobile {mobile_clean} already exists.",
+            "next_book": next_rcpt["book_no"], "next_receipt": next_rcpt["receipt_no"],
+            "form": {"name": name, "mobile": mobile, "father_name": father_name,
+                     "address": address, "join_date": join_date, "plan": plan,
+                     "amount": amount, "start_date": start_date, "payment_mode": payment_mode}
+        })
+
     try:
         member_id = db.add_member({
-            "name": name, "mobile": re.sub(r"\D", "", mobile),
+            "name": name, "mobile": mobile_clean,
             "father_name": father_name, "address": address,
             "join_date": join_date, "plan": plan,
             "amount": amount, "start_date": start_date, "expiry_date": expiry,
             "payment_mode": payment_mode,
+            "book_no": book_no, "receipt_no": receipt_no,
         })
         return RedirectResponse(url=f"/members/{member_id}/view", status_code=303)
     except Exception as e:
-        today = date.today().isoformat()
+        today     = date.today().isoformat()
+        next_rcpt = db.get_next_receipt()
         return templates.TemplateResponse("members/add.html", {
             "request": request, "today": today, "error": str(e),
+            "next_book": next_rcpt["book_no"], "next_receipt": next_rcpt["receipt_no"],
             "form": {"name": name, "mobile": mobile, "father_name": father_name,
                      "address": address, "join_date": join_date, "plan": plan,
                      "amount": amount, "start_date": start_date, "payment_mode": payment_mode}

@@ -185,7 +185,9 @@
               {% for p in stats.recent_payments %}
               <tr>
                 <td style="font-size:.75rem" class="text-primary fw-semibold">
-                  RCPT-{{ p.payment_date[:4] }}-{{ "%03d"|format(p.payment_id) }}
+                  {% if p.receipt_no %}
+                    B{{ p.book_no }}-{{ "%03d"|format(p.receipt_no) }}
+                  {% else %}—{% endif %}
                 </td>
                 <td style="font-size:.82rem" class="fw-semibold">{{ p.name }}</td>
                 <td style="font-size:.78rem">{{ p.plan or '—' }}</td>
