@@ -12,12 +12,16 @@ _base = _Jinja2Templates(env=_env)
 
 
 class _CompatTemplates:
-    """Wraps Starlette 1.3 Jinja2Templates with the old positional API:
-       TemplateResponse(name, {"request": req, ...})
+    """Wraps Starlette 1.3 Jinja2Templates.
+    Auto-injects current_user from session cookie so every template has it.
     """
     def TemplateResponse(self, name: str, context: dict, **kwargs):
+        import auth as _auth
         ctx = dict(context)
         request = ctx.pop("request")
+        if "current_user" not in ctx:
+            token = request.cookies.get("session_token", "")
+            ctx["current_user"] = _auth.get_session_user(token) or "Admin"
         return _base.TemplateResponse(request, name, ctx, **kwargs)
 
     def __getattr__(self, item):

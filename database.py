@@ -1,9 +1,31 @@
 import sqlite3
+import shutil
 from datetime import datetime, date, timedelta
 from contextlib import contextmanager
 import os
 
 DB_PATH = "gym.db"
+_BACKUP_DIR = "backup"
+
+
+def backup_db():
+    """Copy gym.db → backup/DBBKPYYYYMMDD.db. Keep only the latest 2 backups."""
+    if not os.path.exists(DB_PATH):
+        return
+    os.makedirs(_BACKUP_DIR, exist_ok=True)
+    stamp   = datetime.now().strftime("%Y%m%d")
+    dest    = os.path.join(_BACKUP_DIR, f"DBBKP{stamp}.db")
+    shutil.copy2(DB_PATH, dest)
+    # Prune: keep only the 2 most recent backup files
+    backups = sorted(
+        [f for f in os.listdir(_BACKUP_DIR) if f.startswith("DBBKP") and f.endswith(".db")],
+        reverse=True,
+    )
+    for old in backups[2:]:
+        try:
+            os.remove(os.path.join(_BACKUP_DIR, old))
+        except OSError:
+            pass
 
 
 def get_connection():
@@ -82,11 +104,45 @@ def _migrate_add_receipt_fields(conn):
         conn.execute("ALTER TABLE payment_history ADD COLUMN receipt_no INTEGER")
 
 
+def _ensure_default_admin(conn):
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if count == 0:
+        from auth import hash_password
+        conn.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            ("admin", hash_password("admin123"))
+        )
+
+
+def get_user(username: str):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_user(username: str, password_hash: str):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            (username, password_hash)
+        )
+
+
 def init_db():
+    backup_db()  # auto-backup before any migrations
     with get_db() as conn:
         _migrate_name_mobile_unique(conn)
         _migrate_add_receipt_fields(conn)
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS member_master (
                 member_id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT NOT NULL,
@@ -126,6 +182,7 @@ def init_db():
                 FOREIGN KEY (membership_id) REFERENCES membership(membership_id)
             );
         """)
+        _ensure_default_admin(conn)
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────

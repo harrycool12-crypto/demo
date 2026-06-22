@@ -8,14 +8,31 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from database import init_db, get_dashboard_stats
 from config import templates
 from routers import members, payments, reports, import_export, backup
+from routers.auth_router import router as auth_router
+import auth
+
+# Paths that don't require authentication
+_PUBLIC_PATHS = {"/login", "/logout"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        # Allow static files and public pages through
+        if path.startswith("/static") or path in _PUBLIC_PATHS:
+            return await call_next(request)
+        token = request.cookies.get("session_token", "")
+        if not auth.get_session_user(token):
+            return RedirectResponse(url="/login", status_code=303)
+        return await call_next(request)
 
 
 def _free_port(preferred: int = 8000) -> int:
-    """Return preferred port if free, otherwise the next available one."""
     for port in range(preferred, preferred + 20):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
@@ -39,8 +56,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(AuthMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+app.include_router(auth_router)
 app.include_router(members.router)
 app.include_router(payments.router)
 app.include_router(reports.router)
