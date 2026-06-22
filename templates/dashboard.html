@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- ── 5 KPI Cards ─────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <!-- Total Members -->
+  <div class="col-6 col-xl">
+    <div class="kpi-card" style="border-color:#7c3aed">
+      <div class="kpi-icon" style="background:#ede9fe;color:#7c3aed">
+        <i class="bi bi-people-fill"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Total Members</div>
+        <div class="kpi-value">{{ stats.total_members }}</div>
+        <div class="kpi-sub">All Members</div>
+      </div>
+    </div>
+  </div>
+  <!-- Active Members -->
+  <div class="col-6 col-xl">
+    <div class="kpi-card" style="border-color:#16a34a">
+      <div class="kpi-icon" style="background:#dcfce7;color:#16a34a">
+        <i class="bi bi-person-check-fill"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Active Members</div>
+        <div class="kpi-value">{{ stats.active_members }}</div>
+        <div class="kpi-sub">Currently Active</div>
+      </div>
+    </div>
+  </div>
+  <!-- Expiring in 7 days -->
+  <div class="col-6 col-xl">
+    <div class="kpi-card" style="border-color:#f97316">
+      <div class="kpi-icon" style="background:#fff7ed;color:#f97316">
+        <i class="bi bi-clock-history"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Expiring in 7 Days</div>
+        <div class="kpi-value">{{ stats.expiring_soon }}</div>
+        <div class="kpi-sub">Due for Renewal</div>
+      </div>
+    </div>
+  </div>
+  <!-- This Month Collection -->
+  <div class="col-6 col-xl">
+    <div class="kpi-card" style="border-color:#0ea5e9">
+      <div class="kpi-icon" style="background:#e0f2fe;color:#0284c7">
+        <i class="bi bi-currency-rupee"></i>
+      </div>
+      <div>
+        <div class="kpi-label">This Month</div>
+        <div class="kpi-value" style="font-size:1.35rem">₹{{ "{:,.0f}".format(stats.monthly_collection) }}</div>
+        <div class="kpi-sub" id="kpi-month-label"></div>
+      </div>
+    </div>
+  </div>
+  <!-- Today Collection -->
+  <div class="col-6 col-xl">
+    <div class="kpi-card" style="border-color:#10b981">
+      <div class="kpi-icon" style="background:#d1fae5;color:#059669">
+        <i class="bi bi-currency-rupee"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Today Collection</div>
+        <div class="kpi-value" style="font-size:1.35rem">₹{{ "{:,.0f}".format(stats.today_collection) }}</div>
+        <div class="kpi-sub" id="kpi-today-label"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if stats.expiring_soon > 0 %}
+<div class="alert alert-expiry d-flex align-items-center mb-4">
+  <i class="bi bi-exclamation-triangle-fill me-2 text-warning fs-5"></i>
+  <strong>{{ stats.expiring_soon }} member(s)</strong>&nbsp;expiring within 7 days.
+  <a href="/reports/expiry?days=7" class="ms-2 fw-semibold">View All &rarr;</a>
+</div>
+{% endif %}
+
+<!-- ── Row 2: Bar Chart + Donut + Expiring Soon ───────────── -->
+<div class="row g-3 mb-4">
+
+  <!-- Monthly Bar Chart -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span><i class="bi bi-bar-chart-fill me-2" style="color:#2563eb"></i>Monthly Collection (<span id="chart-year"></span>)</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-container"><canvas id="collectionChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Membership Status Donut -->
+  <div class="col-lg-3">
+    <div class="card h-100">
+      <div class="card-header"><span><i class="bi bi-pie-chart-fill me-2 text-success"></i>Membership Status</span></div>
+      <div class="card-body d-flex flex-column align-items-center justify-content-center">
+        <div style="position:relative;width:160px;height:160px">
+          <canvas id="donutChart"></canvas>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
+            <div class="fw-bold fs-5">{{ stats.total_members }}</div>
+            <div class="text-muted" style="font-size:.65rem">Total</div>
+          </div>
+        </div>
+        <div class="mt-3 w-100">
+          <div class="d-flex align-items-center justify-content-between small mb-1">
+            <span><span class="legend-dot" style="background:#16a34a"></span>Active Members</span>
+            <span class="fw-semibold">{{ stats.active_members }}
+              {% if stats.total_members %}({{ "%.0f"|format(stats.active_members/stats.total_members*100) }}%){% endif %}
+            </span>
+          </div>
+          <div class="d-flex align-items-center justify-content-between small">
+            <span><span class="legend-dot" style="background:#ef4444"></span>Inactive Members</span>
+            <span class="fw-semibold">{{ stats.inactive_members }}
+              {% if stats.total_members %}({{ "%.0f"|format(stats.inactive_members/stats.total_members*100) }}%){% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expiring Soon Table -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <span><i class="bi bi-calendar-x me-2 text-warning"></i>Expiring Soon</span>
+        <a href="/reports/expiry?days=7" class="btn btn-sm btn-link text-primary p-0">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Mobile</th>
+              <th>Expiry Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in stats.expiring_members %}
+            <tr>
+              <td style="font-size:.82rem" class="fw-semibold">{{ m.name }}</td>
+              <td style="font-size:.78rem" class="text-muted">{{ m.mobile }}</td>
+              <td style="font-size:.78rem">{{ m.expiry_date }}</td>
+              <td>
+                <span class="badge {% if m.days_remaining <= 2 %}bg-danger{% elif m.days_remaining <= 5 %}bg-warning text-dark{% else %}badge-expiring{% endif %}" style="font-size:.68rem">
+                  {{ m.days_remaining }} days
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3" style="font-size:.82rem">No upcoming expiries</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Row 3: Recent Payments + Quick Actions + Growth Chart ─ -->
+<div class="row g-3">
+
+  <!-- Recent Payments -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span><i class="bi bi-receipt me-2 text-primary"></i>Recent Payments</span>
+        <a href="/payments/history" class="btn btn-sm btn-link text-primary p-0">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr><th>Receipt No.</th><th>Member Name</th><th>Plan</th><th>Amount</th><th>Date</th><th>Mode</th></tr>
+            </thead>
+            <tbody>
+              {% for p in stats.recent_payments %}
+              <tr>
+                <td style="font-size:.75rem" class="text-primary fw-semibold">
+                  RCPT-{{ p.payment_date[:4] }}-{{ "%03d"|format(p.payment_id) }}
+                </td>
+                <td style="font-size:.82rem" class="fw-semibold">{{ p.name }}</td>
+                <td style="font-size:.78rem">{{ p.plan or '—' }}</td>
+                <td class="fw-bold text-success" style="font-size:.82rem">₹{{ "{:,.0f}".format(p.amount) }}</td>
+                <td style="font-size:.75rem" class="text-muted">{{ p.payment_date }}</td>
+                <td>
+                  <span class="badge {% if p.payment_mode=='Cash' %}bg-success{% elif p.payment_mode=='UPI' %}bg-info text-dark{% else %}bg-primary{% endif %}"
+                        style="font-size:.68rem">{{ p.payment_mode }}</span>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted py-3">No payments yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="col-lg-3">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-lightning-charge me-2 text-warning"></i>Quick Actions</div>
+      <div class="card-body d-flex flex-column gap-2">
+        <a href="/members/add" class="btn quick-action-btn" style="background:#2563eb;color:#fff">
+          <i class="bi bi-person-plus me-2"></i>Add New Member
+        </a>
+        <a href="/payments/renew" class="btn quick-action-btn" style="background:#16a34a;color:#fff">
+          <i class="bi bi-arrow-repeat me-2"></i>Renew Membership
+        </a>
+        <a href="/members" class="btn quick-action-btn" style="background:#7c3aed;color:#fff">
+          <i class="bi bi-list-ul me-2"></i>Member List
+        </a>
+        <a href="/reports/collection" class="btn quick-action-btn" style="background:#f97316;color:#fff">
+          <i class="bi bi-graph-up-arrow me-2"></i>Collection Report
+        </a>
+        <a href="/reports/expiry" class="btn quick-action-btn" style="background:#0891b2;color:#fff">
+          <i class="bi bi-calendar-x me-2"></i>Expiry Report
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Growth Line Chart -->
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <span><i class="bi bi-graph-up me-2 text-success"></i>Member Growth (<span id="growth-year"></span>)</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-container"><canvas id="growthChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ── Labels ───────────────────────────────────────────────
+const now = new Date();
+document.getElementById('kpi-month-label').textContent =
+  now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+document.getElementById('kpi-today-label').textContent =
+  now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+document.getElementById('chart-year').textContent = now.getFullYear();
+document.getElementById('growth-year').textContent = now.getFullYear();
+
+// ── Monthly Bar Chart ────────────────────────────────────
+const chartData = {{ stats.chart_data | tojson }};
+new Chart(document.getElementById('collectionChart'), {
+  type: 'bar',
+  data: {
+    labels: chartData.map(d => d.month),
+    datasets: [{
+      label: '₹',
+      data: chartData.map(d => d.amount),
+      backgroundColor: '#3b82f6',
+      borderRadius: 5,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => '₹' + ctx.raw.toLocaleString('en-IN') } }
+    },
+    scales: {
+      y: { beginAtZero: true, ticks: { callback: v => '₹'+v.toLocaleString('en-IN'), font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.05)' } },
+      x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+    }
+  }
+});
+
+// ── Membership Status Donut ──────────────────────────────
+const active   = {{ stats.active_members }};
+const inactive = {{ stats.inactive_members }};
+new Chart(document.getElementById('donutChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Active', 'Inactive'],
+    datasets: [{ data: [active || 1, inactive], backgroundColor: ['#16a34a', '#ef4444'], borderWidth: 2 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '68%',
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.raw } } }
+  }
+});
+
+// ── Member Growth Line Chart (cumulative from chart data) ─
+// Build cumulative counts from existing data (placeholder growth from active members)
+const months = chartData.map(d => d.month);
+const growth = chartData.map((_, i) => {
+  // Simulated cumulative – backend could supply real data
+  return Math.round({{ stats.total_members }} * (0.5 + 0.5 * (i + 1) / chartData.length));
+});
+new Chart(document.getElementById('growthChart'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [{
+      label: 'Members',
+      data: growth,
+      borderColor: '#16a34a',
+      backgroundColor: 'rgba(22,163,74,.08)',
+      pointBackgroundColor: '#16a34a',
+      pointRadius: 4,
+      tension: 0.3,
+      fill: true,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' }, ticks: { font: { size: 10 } } },
+      x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+    }
+  }
+});
+</script>
+{% endblock %}

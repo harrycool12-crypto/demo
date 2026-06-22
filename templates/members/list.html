@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Members{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-people me-2 text-success"></i>Member List</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Members</li></ol></nav>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/reports/export/all-members" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-file-earmark-excel me-1"></i>Export
+    </a>
+    <a href="/members/add" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Add Member
+    </a>
+  </div>
+</div>
+
+<!-- Search & Filter -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="d-flex gap-2 flex-wrap align-items-center">
+      <div class="input-group search-box">
+        <input type="text" name="q" class="form-control" placeholder="Search name, mobile, ID…" value="{{ q }}">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i></button>
+      </div>
+      <select name="status" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+        <option value="" {% if not status %}selected{% endif %}>All Status</option>
+        <option value="Active"   {% if status=='Active' %}selected{% endif %}>Active</option>
+        <option value="Inactive" {% if status=='Inactive' %}selected{% endif %}>Inactive</option>
+      </select>
+      {% if q or status %}
+      <a href="/members" class="btn btn-sm btn-outline-secondary">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>Members <span class="badge bg-secondary ms-1">{{ members|length }}</span></span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Member</th>
+            <th>Mobile</th>
+            <th>Join Date</th>
+            <th>Plan</th>
+            <th>Expiry</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          {% set today = namespace(val="") %}
+          <tr>
+            <td class="text-muted fw-semibold" style="font-size:.78rem">#{{ m.member_id }}</td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="member-avatar">{{ m.name[:2].upper() }}</span>
+                <span class="fw-semibold">{{ m.name }}</span>
+              </div>
+            </td>
+            <td>{{ m.mobile }}</td>
+            <td style="font-size:.82rem">{{ m.join_date }}</td>
+            <td>
+              {% if m.plan %}
+              <span class="badge bg-secondary">{{ m.plan }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td style="font-size:.82rem">{{ m.expiry_date or '—' }}</td>
+            <td>
+              <span class="badge {% if m.status=='Active' %}badge-active{% else %}badge-inactive{% endif %}">
+                {{ m.status }}
+              </span>
+            </td>
+            <td>
+              <div class="d-flex gap-1">
+                <a href="/members/{{ m.member_id }}/view" class="btn btn-xs btn-outline-primary" title="View">
+                  <i class="bi bi-eye"></i>
+                </a>
+                <a href="/members/{{ m.member_id }}/edit" class="btn btn-xs btn-outline-secondary" title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <a href="/payments/renew?member_id={{ m.member_id }}" class="btn btn-xs btn-outline-success" title="Renew">
+                  <i class="bi bi-arrow-repeat"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">No members found</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

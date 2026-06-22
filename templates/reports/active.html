@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Active Members{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-person-check me-2 text-success"></i>Active Members</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Reports &rsaquo; Active Members</li></ol></nav>
+  </div>
+  <a href="/reports/export/active" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    Active Members <span class="badge bg-success ms-1">{{ members|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Father's Name</th>
+            <th>Address</th>
+            <th>Join Date</th>
+            <th>Plan</th>
+            <th>Expiry Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td class="text-muted small">#{{ m.member_id }}</td>
+            <td>
+              <a href="/members/{{ m.member_id }}/view" class="fw-semibold text-decoration-none">{{ m.name }}</a>
+            </td>
+            <td>{{ m.mobile }}</td>
+            <td>{{ m.father_name or '—' }}</td>
+            <td style="max-width:180px;white-space:normal;font-size:.8rem">{{ m.address or '—' }}</td>
+            <td style="font-size:.85rem">{{ m.join_date }}</td>
+            <td><span class="badge bg-secondary">{{ m.plan or '—' }}</span></td>
+            <td style="font-size:.85rem">{{ m.expiry_date or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">No active members</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

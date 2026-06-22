@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Backup{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-cloud-arrow-up me-2 text-success"></i>Backup & Restore</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Backup</li></ol></nav>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Create Backup -->
+  <div class="col-lg-5">
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-cloud-upload me-2 text-success"></i>Create Backup</div>
+      <div class="card-body">
+        <p class="text-muted small">Creates a safe copy of the current database in the <code>backups/</code> folder.</p>
+        <button class="btn btn-primary w-100" id="backupBtn" onclick="createBackup()">
+          <i class="bi bi-cloud-arrow-up me-2"></i>Create Backup Now
+        </button>
+        <div id="backupMsg" class="mt-2"></div>
+      </div>
+    </div>
+
+    <!-- Restore -->
+    <div class="card">
+      <div class="card-header"><i class="bi bi-cloud-download me-2 text-warning"></i>Restore Database</div>
+      <div class="card-body">
+        <div class="alert alert-warning small">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Restoring will replace the current database. A pre-restore backup is created automatically.
+        </div>
+        <label class="form-label">Select Backup File (.db)</label>
+        <input type="file" class="form-control mb-3" id="restoreFile" accept=".db">
+        <button class="btn btn-warning w-100" onclick="doRestore()">
+          <i class="bi bi-arrow-counterclockwise me-2"></i>Restore Database
+        </button>
+        <div id="restoreMsg" class="mt-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup List -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <span><i class="bi bi-archive me-2"></i>Saved Backups</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Filename</th><th>Size</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="backupTable">
+              {% for b in backups %}
+              <tr id="row-{{ loop.index }}">
+                <td style="font-size:.82rem"><i class="bi bi-database me-1 text-success"></i>{{ b.name }}</td>
+                <td class="text-muted small">{{ b.size }} KB</td>
+                <td class="text-muted small">{{ b.modified }}</td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <a href="/backup/download/{{ b.name }}" class="btn btn-xs btn-outline-primary" title="Download">
+                      <i class="bi bi-download"></i>
+                    </a>
+                    <button class="btn btn-xs btn-outline-danger" title="Delete"
+                            onclick="deleteBackup('{{ b.name }}', {{ loop.index }})">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-3">No backups yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function createBackup() {
+  const btn = document.getElementById('backupBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating…';
+  try {
+    const res  = await fetch('/backup/create', { method: 'POST' });
+    const data = await res.json();
+    document.getElementById('backupMsg').innerHTML =
+      `<div class="alert alert-success small py-2"><i class="bi bi-check-circle me-1"></i>${data.message}</div>`;
+    setTimeout(() => location.reload(), 1500);
+  } catch(e) {
+    document.getElementById('backupMsg').innerHTML =
+      `<div class="alert alert-danger small py-2">Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-cloud-arrow-up me-2"></i>Create Backup Now';
+  }
+}
+
+async function doRestore() {
+  const file = document.getElementById('restoreFile').files[0];
+  if (!file) { alert('Select a .db file first.'); return; }
+  if (!confirm('Replace current database with this backup?')) return;
+  const form = new FormData();
+  form.append('file', file);
+  const res  = await fetch('/backup/restore', { method: 'POST', body: form });
+  const data = await res.json();
+  document.getElementById('restoreMsg').innerHTML = data.error
+    ? `<div class="alert alert-danger small py-2">${data.error}</div>`
+    : `<div class="alert alert-success small py-2"><i class="bi bi-check-circle me-1"></i>${data.message}</div>`;
+}
+
+async function deleteBackup(name, idx) {
+  if (!confirm(`Delete ${name}?`)) return;
+  await fetch(`/backup/delete/${name}`, { method: 'POST' });
+  const row = document.getElementById(`row-${idx}`);
+  if (row) row.remove();
+}
+</script>
+{% endblock %}

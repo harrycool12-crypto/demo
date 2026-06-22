@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Inactive Members{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-person-x me-2 text-danger"></i>Inactive Members</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Reports &rsaquo; Inactive Members</li></ol></nav>
+  </div>
+  <a href="/reports/export/inactive" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    Inactive Members <span class="badge bg-danger ms-1">{{ members|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Father's Name</th>
+            <th>Address</th>
+            <th>Join Date</th>
+            <th>Last Expiry</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td class="text-muted small">#{{ m.member_id }}</td>
+            <td>
+              <a href="/members/{{ m.member_id }}/view" class="fw-semibold text-decoration-none">{{ m.name }}</a>
+            </td>
+            <td>{{ m.mobile }}</td>
+            <td>{{ m.father_name or '—' }}</td>
+            <td style="max-width:180px;white-space:normal;font-size:.8rem">{{ m.address or '—' }}</td>
+            <td style="font-size:.85rem">{{ m.join_date }}</td>
+            <td style="font-size:.85rem">{{ m.last_expiry or '—' }}</td>
+            <td>
+              <a href="/payments/renew?member_id={{ m.member_id }}" class="btn btn-xs btn-outline-success">
+                <i class="bi bi-arrow-repeat me-1"></i>Renew
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">No inactive members</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Add Member{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-person-plus me-2 text-success"></i>Add New Member</h4>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/members">Members</a></li>
+        <li class="breadcrumb-item active">Add</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/members/add" id="addMemberForm">
+  <div class="row g-4">
+    <!-- Personal Info -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header"><i class="bi bi-person me-2"></i>Personal Information</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Full Name <span class="required-star">*</span></label>
+            <input type="text" name="name" class="form-control" required
+                   value="{{ form.name if form else '' }}" placeholder="Enter full name">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Mobile Number <span class="required-star">*</span></label>
+            <input type="tel" name="mobile" id="mobileInput" class="form-control" required
+                   value="{{ form.mobile if form else '' }}" placeholder="10-digit mobile number"
+                   pattern="[6-9][0-9]{9}" maxlength="10" inputmode="numeric">
+            <div class="invalid-feedback">Enter a valid 10-digit mobile number (starts with 6–9).</div>
+            <div class="valid-feedback">Looks good!</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Father's Name</label>
+            <input type="text" name="father_name" class="form-control"
+                   value="{{ form.father_name if form else '' }}" placeholder="Optional">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control" rows="2" placeholder="Optional">{{ form.address if form else '' }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Joining Date <span class="required-star">*</span></label>
+            <input type="date" name="join_date" class="form-control" required
+                   value="{{ form.join_date if form else today }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Membership Info -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header"><i class="bi bi-card-checklist me-2"></i>Membership Details</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Membership Plan <span class="required-star">*</span></label>
+            <select name="plan" class="form-select" required id="planSelect">
+              {% for p in ['Monthly','Quarterly','Half Yearly','Annual'] %}
+              <option value="{{ p }}" {% if form and form.plan==p %}selected{% endif %}>{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Start Date <span class="required-star">*</span></label>
+            <input type="date" name="start_date" class="form-control" required id="startDate"
+                   value="{{ form.start_date if form else today }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Expiry Date (Auto-calculated)</label>
+            <input type="text" class="form-control bg-light" id="expiryDisplay" readonly placeholder="Calculated automatically">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Amount (₹) <span class="required-star">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">₹</span>
+              <input type="number" name="amount" class="form-control" required min="1"
+                     value="{{ form.amount if form else '' }}" placeholder="0">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Payment Mode</label>
+            <select name="payment_mode" class="form-select">
+              {% for m in ['Cash','UPI','Bank Transfer'] %}
+              <option value="{{ m }}" {% if form and form.payment_mode==m %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 mt-4">
+    <button type="submit" class="btn btn-primary px-4">
+      <i class="bi bi-check-lg me-2"></i>Save Member
+    </button>
+    <a href="/members" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PLAN_MONTHS = {Monthly:1, Quarterly:3, 'Half Yearly':6, Annual:12};
+
+// Mobile: allow only digits, max 10, live validation
+const mobileInput = document.getElementById('mobileInput');
+mobileInput.addEventListener('input', () => {
+  mobileInput.value = mobileInput.value.replace(/\D/g, '').slice(0, 10);
+  const v = mobileInput.value;
+  if (v.length === 10 && /^[6-9]/.test(v)) {
+    mobileInput.classList.add('is-valid'); mobileInput.classList.remove('is-invalid');
+  } else if (v.length > 0) {
+    mobileInput.classList.add('is-invalid'); mobileInput.classList.remove('is-valid');
+  } else {
+    mobileInput.classList.remove('is-valid','is-invalid');
+  }
+});
+
+// Block submit if mobile invalid
+document.getElementById('addMemberForm').addEventListener('submit', e => {
+  const v = mobileInput.value;
+  if (!/^[6-9][0-9]{9}$/.test(v)) {
+    e.preventDefault();
+    mobileInput.classList.add('is-invalid');
+    mobileInput.focus();
+  }
+});
+
+function calcExpiry() {
+  const plan  = document.getElementById('planSelect').value;
+  const start = document.getElementById('startDate').value;
+  if (!start) return;
+  const d = new Date(start);
+  d.setMonth(d.getMonth() + (PLAN_MONTHS[plan] || 1));
+  document.getElementById('expiryDisplay').value = d.toISOString().split('T')[0];
+}
+
+document.getElementById('planSelect').addEventListener('change', calcExpiry);
+document.getElementById('startDate').addEventListener('change', calcExpiry);
+calcExpiry();
+</script>
+{% endblock %}

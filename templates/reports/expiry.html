@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Expiry Report{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4><i class="bi bi-calendar-x me-2 text-warning"></i>Expiry Report</h4>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item active">Reports &rsaquo; Expiry</li></ol></nav>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/reports/export/expiry?days={{ days }}" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-earmark-excel me-1"></i>Export
+    </a>
+  </div>
+</div>
+
+<!-- Filter -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <label class="form-label mb-0 fw-semibold">Show expiring in next:</label>
+      {% for d in [7, 15, 30, 60] %}
+      <a href="/reports/expiry?days={{ d }}"
+         class="btn btn-sm {% if days==d %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        {{ d }} days
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>
+      Expiring within {{ days }} days
+      <span class="badge bg-warning text-dark ms-1">{{ members|length }}</span>
+    </span>
+    {% if members %}
+    <a id="waAllBtn" href="#" target="_blank" rel="noopener noreferrer"
+       class="btn btn-sm btn-whatsapp" style="display:none">
+      <i class="bi bi-whatsapp me-1"></i>WhatsApp All ({{ members|length }})
+    </a>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Plan</th>
+            <th>Expiry Date</th>
+            <th>Days Left</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td class="text-muted small">#{{ m.member_id }}</td>
+            <td>
+              <a href="/members/{{ m.member_id }}/view" class="fw-semibold text-decoration-none">
+                {{ m.name }}
+              </a>
+            </td>
+            <td>{{ m.mobile }}</td>
+            <td><span class="badge bg-secondary">{{ m.plan or '—' }}</span></td>
+            <td style="font-size:.85rem">{{ m.expiry_date }}</td>
+            <td>
+              <span class="badge
+                {% if m.days_remaining <= 3 %}bg-danger
+                {% elif m.days_remaining <= 7 %}bg-warning text-dark
+                {% else %}badge-expiring{% endif %}">
+                {{ m.days_remaining }} days
+              </span>
+            </td>
+            <td>
+              <div class="d-flex gap-1">
+                <!-- href is built by JS on DOMContentLoaded — no popup blocker issues -->
+                <a href="#"
+                   class="btn btn-xs btn-whatsapp wa-link"
+                   data-mobile="{{ m.mobile }}"
+                   data-name="{{ m.name }}"
+                   data-expiry="{{ m.expiry_date }}"
+                   data-days="{{ m.days_remaining }}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   title="Send WhatsApp reminder to {{ m.name }}">
+                  <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                </a>
+                <a href="/payments/renew?member_id={{ m.member_id }}"
+                   class="btn btn-xs btn-primary">
+                  <i class="bi bi-arrow-repeat me-1"></i>Renew
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              <i class="bi bi-check-circle text-success me-2 fs-5"></i>
+              No members expiring within {{ days }} days
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+.btn-whatsapp {
+  background: #25d366;
+  color: #fff !important;
+  border: none;
+  font-weight: 600;
+}
+.btn-whatsapp:hover, .btn-whatsapp:focus {
+  background: #1aad52;
+  color: #fff !important;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Build WhatsApp URL using JS encodeURIComponent — avoids autoescape issues
+// Set as real href so click navigates directly (no window.open, no popup blocker)
+function buildWaUrl(mobile, name, expiry, days) {
+  const msg =
+    "Dear " + name + ", your membership at Fit Zone Gym is expiring on " + expiry +
+    ". Only " + days + " day(s) left! Please renew to continue your fitness journey. " +
+    "- Fit Zone Gym";
+  return "https://wa.me/91" + mobile + "?text=" + encodeURIComponent(msg);
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  // Set href on every per-row WhatsApp link
+  document.querySelectorAll("a.wa-link").forEach(function (a) {
+    a.href = buildWaUrl(
+      a.dataset.mobile,
+      a.dataset.name,
+      a.dataset.expiry,
+      a.dataset.days
+    );
+  });
+
+  // "WhatsApp All" — opens the first member's chat; user sends, comes back, clicks next
+  // Better UX: show a modal listing all links so user can click each one individually
+  var allBtn = document.getElementById("waAllBtn");
+  if (allBtn) {
+    var links = document.querySelectorAll("a.wa-link");
+    if (links.length > 0) {
+      allBtn.style.display = "";
+      allBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        showWaModal(links);
+      });
+    }
+  }
+});
+
+function showWaModal(links) {
+  // Build a simple list of clickable WhatsApp links in a modal
+  var rows = Array.from(links).map(function (a) {
+    return "<li class='mb-2'>" +
+      "<a href='" + a.href + "' target='_blank' rel='noopener noreferrer' class='btn btn-sm btn-whatsapp'>" +
+      "<i class='bi bi-whatsapp me-1'></i>" + a.dataset.name + " (" + a.dataset.mobile + ")" +
+      "</a></li>";
+  }).join("");
+
+  var modal = document.createElement("div");
+  modal.innerHTML =
+    "<div class='modal fade' id='waModal' tabindex='-1'>" +
+      "<div class='modal-dialog modal-dialog-scrollable'>" +
+        "<div class='modal-content'>" +
+          "<div class='modal-header'>" +
+            "<h6 class='modal-title fw-bold'><i class='bi bi-whatsapp me-2 text-success'></i>Send Reminders</h6>" +
+            "<button type='button' class='btn-close' data-bs-dismiss='modal'></button>" +
+          "</div>" +
+          "<div class='modal-body'>" +
+            "<p class='text-muted small mb-3'>Click each member to open WhatsApp with the message ready. Just press <strong>Send</strong>.</p>" +
+            "<ul class='list-unstyled'>" + rows + "</ul>" +
+          "</div>" +
+          "<div class='modal-footer'>" +
+            "<button class='btn btn-secondary btn-sm' data-bs-dismiss='modal'>Close</button>" +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+    "</div>";
+  document.body.appendChild(modal);
+  var m = new bootstrap.Modal(document.getElementById("waModal"));
+  m.show();
+  document.getElementById("waModal").addEventListener("hidden.bs.modal", function () {
+    modal.remove();
+  });
+}
+</script>
+{% endblock %}
